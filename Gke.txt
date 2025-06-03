@@ -1,0 +1,191 @@
+Great! You're on the right track by trying to deploy a **Spring Boot app** on **Google Kubernetes Engine (GKE)** — it’s an excellent hands-on way to learn Cloud Native concepts.
+
+Let’s go step-by-step assuming you have a free trial on Google Cloud. We'll:
+
+1. **Create a simple Spring Boot app**
+2. **Containerize it using Docker**
+3. **Push the image to Google Container Registry (GCR)**
+4. **Create a GKE cluster**
+5. **Deploy the app to the cluster**
+6. **Expose it with a LoadBalancer**
+
+---
+
+## ✅ Prerequisites
+
+* Free-tier Google Cloud account
+* Spring Boot app ready (we'll create a sample one)
+* Docker installed
+* Google Cloud CLI installed (`gcloud`)
+* Basic understanding of Kubernetes YAML
+
+---
+
+## Step 1: Create a Simple Spring Boot App
+
+If you don't have one, generate it here: [https://start.spring.io/](https://start.spring.io/)
+
+Dependencies:
+`Spring Web`
+
+Let's say your app is a simple controller:
+
+```java
+@RestController
+public class HelloController {
+    @GetMapping("/")
+    public String hello() {
+        return "Hello from GKE!";
+    }
+}
+```
+
+Build it:
+
+```bash
+./mvnw clean package
+```
+
+---
+
+## Step 2: Create Dockerfile
+
+In the root of your Spring Boot project, add:
+
+```Dockerfile
+FROM openjdk:17-jdk-slim
+VOLUME /tmp
+COPY target/*.jar app.jar
+ENTRYPOINT ["java", "-jar", "/app.jar"]
+```
+
+Build the Docker image:
+
+```bash
+docker build -t gke-spring-demo .
+```
+
+---
+
+## Step 3: Push to Google Container Registry (GCR)
+
+1. **Authenticate Docker with GCP**:
+
+```bash
+gcloud auth configure-docker
+```
+
+2. **Tag your image**:
+
+```bash
+docker tag gke-spring-demo gcr.io/YOUR_PROJECT_ID/gke-spring-demo
+```
+
+3. **Push the image**:
+
+```bash
+docker push gcr.io/YOUR_PROJECT_ID/gke-spring-demo
+```
+
+---
+
+## Step 4: Create a GKE Cluster
+
+Enable the Kubernetes API:
+
+```bash
+gcloud services enable container.googleapis.com
+```
+
+Create a cluster:
+
+```bash
+gcloud container clusters create spring-cluster \
+    --num-nodes=1 \
+    --zone=us-central1-a
+```
+
+Get credentials:
+
+```bash
+gcloud container clusters get-credentials spring-cluster \
+    --zone=us-central1-a
+```
+
+---
+
+## Step 5: Create Kubernetes Deployment and Service
+
+### `deployment.yaml`
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: springboot-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: springboot
+  template:
+    metadata:
+      labels:
+        app: springboot
+    spec:
+      containers:
+        - name: springboot
+          image: gcr.io/YOUR_PROJECT_ID/gke-spring-demo
+          ports:
+            - containerPort: 8080
+```
+
+### `service.yaml`
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: springboot-service
+spec:
+  type: LoadBalancer
+  selector:
+    app: springboot
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+```
+
+Apply the YAMLs:
+
+```bash
+kubectl apply -f deployment.yaml
+kubectl apply -f service.yaml
+```
+
+---
+
+## Step 6: Access the App
+
+Get external IP:
+
+```bash
+kubectl get service springboot-service
+```
+
+When `EXTERNAL-IP` is available, open it in your browser. You should see:
+
+```
+Hello from GKE!
+```
+
+---
+
+## ✅ Bonus: Clean Up (To avoid charges)
+
+```bash
+gcloud container clusters delete spring-cluster --zone=us-central1-a
+```
+
+---
